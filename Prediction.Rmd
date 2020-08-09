@@ -1,0 +1,106 @@
+---
+title: "Prediction Assignment"
+output:
+  html_document:
+    df_print: paged
+---
+# Synopsis
+This project utilized to data from accelerometers on the belt, forearm, arm, and dumbell quantify how well subjects perform barbell lifts. The training dataset includes the accelerometer data from 6 participants who were asked to do barbell lift in 5 different fashion: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E). The test dataset was from 20 participants. We used random forest tree to build a model qualifying lifts using accelerometer parameters.
+
+# Data download,and cleanup
+## Load library
+```{r}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+library(corrplot)
+library(dplyr)
+set.seed(12345)
+```
+## Download data
+```{r}
+# Download training and test data
+url_training<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+if(!file.exists("pml-training.csv")){
+download.file(url_training, destfile = "pml-training.csv", method="curl")
+}
+url_test<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+if(!file.exists("pml-testing.csv")){
+download.file(url_test, destfile = "pml-testing.csv", method="curl")
+}
+```
+
+We then read in the data from the csv file. 
+```{r,echo = TRUE }
+train <- read.csv("pml-training.csv", header = TRUE,na.strings=c("NA","","#DIV/0!"))
+test <- read.csv("pml-testing.csv",header = TRUE,na.strings=c("NA","","#DIV/0!"))
+```
+## Remove NA, #DIV/0!, and blank data
+```{r}
+train<-train%>%select_if(colSums(!is.na(.)) == nrow(train))
+test<-test%>%select_if(colSums(!is.na(.)) == nrow(test))
+dim(train); dim(test)
+```
+The dimension of the data is reduced to 60 columns.
+
+## Reduce the number of variables
+Remove the non-predictors from the training set. This includes the index, subject name, time and window variables.
+```{r}
+train<-train[,-c(1:7)]
+test<-test[,-c(1:7)]
+dim(train); dim(test)
+```
+The dimension of the data is reduced to 53 columns.
+
+## Check for near zero values in training data
+```{r}
+nzv<-nearZeroVar(train)
+nzv
+```
+None was found, and the number of variables for the analysis is reduced to 53.
+```{r}
+colnames(train)
+```
+# Model building
+## Split the training dataset into 2 sets, one for training and one for validation.
+```{r}
+inTrain  <- createDataPartition(train$classe, p=0.7, list=FALSE)
+TrainSet <- train[inTrain, ]
+ValidateSet  <- train[-inTrain, ]
+dim(TrainSet)
+```
+## Use the Random Forest method to generate the prediction model
+```{r}
+# use Random Forest method with Cross Validation, 4 folds
+set.seed(12345)
+myModel <- train(classe ~ ., data = TrainSet, metho="rf", metric = "Accuracy", preProcess=c("center", "scale") , trControl=trainControl(method = "cv", number = 4, verboseIter=FALSE))
+```
+## Final model
+```{r}
+myModel$finalModel
+```
+
+## Predict the activity performed using the vadilateSet
+```{r}
+predictRandForest <- predict(myModel, newdata=ValidateSet)
+```
+## Check the accuracy of the model by comparing the predictions to the actual results
+```{r}
+confMatRandForest <- confusionMatrix(predictRandForest, ValidateSet$classe)
+confMatRandForest
+```
+## Out of sample error 
+```{r}
+postResample(predictRandForest, ValidateSet$classe)
+```
+
+The accuracy of this model is high (0.9932). The out of sample error is 0.0068.
+
+# Apply the model on the testset
+```{r}
+print(predict(myModel, newdata=test))
+```
+
+
